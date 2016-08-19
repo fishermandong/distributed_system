@@ -1085,10 +1085,10 @@ void OSDMonitor::encode_pending(MonitorDBStore::TransactionRef t)
 
   // tell me about it
   for (map<int32_t,uint8_t>::iterator i = pending_inc.new_state.begin();
-       i != pending_inc.new_state.end();
+       i != pending_inc.new_state.end();//dhq: 从pending_inc中取内容
        ++i) {
     int s = i->second ? i->second : CEPH_OSD_UP;
-    if (s & CEPH_OSD_UP)
+    if (s & CEPH_OSD_UP)//dhq: 这个代表mark down事件
       dout(2) << " osd." << i->first << " DOWN" << dendl;
     if (s & CEPH_OSD_EXISTS)
       dout(2) << " osd." << i->first << " DNE" << dendl;
@@ -1431,11 +1431,11 @@ bool OSDMonitor::preprocess_failure(MonOpRequestRef op)
   // weird?
   if (!osdmap.have_inst(badboy)) {
     dout(5) << "preprocess_failure dne(/dup?): " << m->get_target() << ", from " << m->get_orig_source_inst() << dendl;
-    if (m->get_epoch() < osdmap.get_epoch())
+    if (m->get_epoch() < osdmap.get_epoch())//dhq: epoch很重要
       send_incremental(op, m->get_epoch()+1);
     goto didit;
   }
-  if (osdmap.get_inst(badboy) != m->get_target()) {
+  if (osdmap.get_inst(badboy) != m->get_target()) {//dhq: 直接进行了内容比较，而不依赖于编号 ?
     dout(5) << "preprocess_failure wrong osd: report " << m->get_target() << " != map's " << osdmap.get_inst(badboy)
 	    << ", from " << m->get_orig_source_inst() << dendl;
     if (m->get_epoch() < osdmap.get_epoch())
@@ -1669,16 +1669,16 @@ bool OSDMonitor::check_failure(utime_t now, int target_osd, failure_info_t& fi)
 
   // already pending failure?
   if (pending_inc.new_state.count(target_osd) &&
-      pending_inc.new_state[target_osd] & CEPH_OSD_UP) {
+      pending_inc.new_state[target_osd] & CEPH_OSD_UP) {//dhq: 已经在做同样处理了
     dout(10) << " already pending failure" << dendl;
     return true;
   }
 
   if (failed_for >= grace &&
       ((int)fi.reporters.size() >= g_conf->mon_osd_min_down_reporters) &&
-      (fi.num_reports >= g_conf->mon_osd_min_down_reports)) {
+      (fi.num_reports >= g_conf->mon_osd_min_down_reports)) {//dhq: 超时时间到了，并且有足够的报告次数
     dout(1) << " we have enough reports/reporters to mark osd." << target_osd << " down" << dendl;
-    pending_inc.new_state[target_osd] = CEPH_OSD_UP;
+    pending_inc.new_state[target_osd] = CEPH_OSD_UP;//dhq: 为什么是CEPH_OSD_UP ? wierd
 
     mon->clog->info() << osdmap.get_inst(target_osd) << " failed ("
 		     << fi.num_reports << " reports from " << (int)fi.reporters.size() << " peers after "
@@ -1709,12 +1709,12 @@ bool OSDMonitor::prepare_failure(MonOpRequestRef op)
     mon->clog->debug() << m->get_target() << " reported failed by "
 		      << m->get_orig_source_inst() << "\n";
     failure_info_t& fi = failure_info[target_osd];
-    MonOpRequestRef old_op = fi.add_report(reporter, failed_since, op);
+    MonOpRequestRef old_op = fi.add_report(reporter, failed_since, op);//dhq: 加到fi(failure report)
     if (old_op) {
       mon->no_reply(old_op);
     }
 
-    return check_failure(now, target_osd, fi);
+    return check_failure(now, target_osd, fi);//dhq: 这个很重要
   } else {
     // remove the report
     mon->clog->debug() << m->get_target() << " failure report canceled by "

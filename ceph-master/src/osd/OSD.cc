@@ -4345,7 +4345,7 @@ void OSD::do_mon_report()
 
 void OSD::ms_handle_connect(Connection *con)
 {
-  if (con->get_peer_type() == CEPH_ENTITY_TYPE_MON) {
+  if (con->get_peer_type() == CEPH_ENTITY_TYPE_MON) {//dhq: from monitor
     Mutex::Locker l(osd_lock);
     if (is_stopping())
       return;
