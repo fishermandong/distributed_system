@@ -503,10 +503,10 @@ public:
   OSDMapRef get_nextmap_reserved() {
     Mutex::Locker l(pre_publish_lock);
     if (!next_osdmap)
-      return OSDMapRef();
+      return OSDMapRef();//dhq: 啥意思 ？ 而且直接return了。
     epoch_t e = next_osdmap->get_epoch();
     map<epoch_t, unsigned>::iterator i =
-      map_reservations.insert(make_pair(e, 0)).first;
+      map_reservations.insert(make_pair(e, 0)).first; //dhq: 对应某个epoch的引用计数 ? 
     i->second++;
     return next_osdmap;
   }
@@ -871,7 +871,7 @@ public:
   // split
   Mutex in_progress_split_lock;
   map<spg_t, spg_t> pending_splits; // child -> parent
-  map<spg_t, set<spg_t> > rev_pending_splits; // parent -> [children]
+  map<spg_t, set<spg_t> > rev_pending_splits; // parent -> [children] //dhq: rev = reverse
   set<spg_t> in_progress_splits;       // child
 
   void _start_split(spg_t parent, const set<spg_t> &children);
