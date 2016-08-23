@@ -278,7 +278,7 @@ void OSDService::_start_split(spg_t parent, const set<spg_t> &children)
     pending_splits.insert(make_pair(*i, parent));
 
     assert(!rev_pending_splits[parent].count(*i));
-    rev_pending_splits[parent].insert(*i);
+    rev_pending_splits[parent].insert(*i); //dhq: reverse
   }
 }
 
@@ -311,7 +311,7 @@ void OSDService::cancel_pending_splits_for_parent(spg_t parent)
 
 void OSDService::_cancel_pending_splits_for_parent(spg_t parent)
 {
-  map<spg_t, set<spg_t> >::iterator piter = rev_pending_splits.find(parent);
+  map<spg_t, set<spg_t> >::iterator piter = rev_pending_splits.find(parent);//dhq: 返回的是个set的iter
   if (piter == rev_pending_splits.end())
     return;
 
@@ -379,7 +379,7 @@ void OSDService::init_splits_between(spg_t pgid,
     assert(curmap == tomap); // we must have had both frommap and tomap
   }
 }
-
+//dhq: 扩展pg数量，可能需要做split.正在的split应该由split_pgs()执行
 void OSDService::expand_pg_num(OSDMapRef old_map,
 			       OSDMapRef new_map)
 {
@@ -534,7 +534,7 @@ void OSDService::agent_entry()
       agent_queue_pos = top.begin();
       agent_valid_iterator = true;
     }
-    PGRef pg = *agent_queue_pos;
+    PGRef pg = *agent_queue_pos;//dhq:后者是个iterator
     int max = g_conf->osd_agent_max_ops - agent_ops;
     int agent_flush_quota = max;
     if (!flush_mode_high_count)
@@ -690,16 +690,16 @@ void OSDService::send_message_osd_cluster(int peer, Message *m, epoch_t from_epo
   assert(from_epoch <= next_map->get_epoch());
 
   if (next_map->is_down(peer) ||
-      next_map->get_info(peer).up_from > from_epoch) {
+      next_map->get_info(peer).up_from > from_epoch) {//dhq: next_map显示该peer已经down了，或者peer在后来才up的，不用发了
     m->put();
     release_map(next_map);
     return;
   }
-  const entity_inst_t& peer_inst = next_map->get_cluster_inst(peer);
-  Connection *peer_con = osd->cluster_messenger->get_connection(peer_inst).get();
-  share_map_peer(peer, peer_con, next_map);
+  const entity_inst_t& peer_inst = next_map->get_cluster_inst(peer);//dhq: peer是对方的id
+  Connection *peer_con = osd->cluster_messenger->get_connection(peer_inst).get();//dhq: get是个引用
+  share_map_peer(peer, peer_con, next_map);//dhq:先share map一下
   peer_con->send_message(m);
-  release_map(next_map);
+  release_map(next_map);//dhq: 减计数
 }
 
 ConnectionRef OSDService::get_con_osd_cluster(int peer, epoch_t from_epoch)
@@ -729,7 +729,7 @@ pair<ConnectionRef,ConnectionRef> OSDService::get_con_osd_hb(int peer, epoch_t f
       next_map->get_info(peer).up_from > from_epoch) {
     release_map(next_map);
     return ret;
-  }
+  }//dhq: back_inst和front_inst啥含义？
   ret.first = osd->hbclient_messenger->get_connection(next_map->get_hb_back_inst(peer));
   if (next_map->get_hb_front_addr(peer) != entity_addr_t())
     ret.second = osd->hbclient_messenger->get_connection(next_map->get_hb_front_inst(peer));
@@ -813,7 +813,7 @@ bool OSDService::should_share_map(entity_name_t name, Connection *con,
            << " " << epoch << dendl;
 
   // does client have old map?
-  if (name.is_client()) {
+  if (name.is_client()) {//dhq: peer是个客户端
     bool message_sendmap = epoch < osdmap->get_epoch();
     if (message_sendmap && sent_epoch_p) {
       dout(20) << "client session last_sent_epoch: "
@@ -828,8 +828,8 @@ bool OSDService::should_share_map(entity_name_t name, Connection *con,
   if (con->get_messenger() == osd->cluster_messenger &&
       con != osd->cluster_messenger->get_loopback_connection() &&
       osdmap->is_up(name.num()) &&
-      (osdmap->get_cluster_addr(name.num()) == con->get_peer_addr() ||
-       osdmap->get_hb_back_addr(name.num()) == con->get_peer_addr())) {
+      (osdmap->get_cluster_addr(name.num()) == con->get_peer_addr() || //dhq:这个是说monitor?
+       osdmap->get_hb_back_addr(name.num()) == con->get_peer_addr())) {//dhq: hb_back?
     // remember
     epoch_t has = MAX(get_peer_epoch(name.num()), epoch);
 
@@ -876,7 +876,7 @@ void OSDService::share_map(
     } else if (con->get_messenger() == osd->cluster_messenger &&
         osdmap->is_up(name.num()) &&
         (osdmap->get_cluster_addr(name.num()) == con->get_peer_addr() ||
-            osdmap->get_hb_back_addr(name.num()) == con->get_peer_addr())) {
+            osdmap->get_hb_back_addr(name.num()) == con->get_peer_addr())) {//dhq: should_share_map也有类似判断
       dout(10) << name << " " << con->get_peer_addr()
 	               << " has old map " << epoch << " < "
 	               << osdmap->get_epoch() << dendl;
@@ -1023,13 +1023,13 @@ bool OSDService::prepare_to_stop()
 					      osdmap->get_inst(whoami),
 					      osdmap->get_epoch(),
 					      true  // request ack
-					      ));
+					      ));//这个应该是发个monitor集群的，不是peer，一份即可。
     utime_t now = ceph_clock_now(cct);
     utime_t timeout;
     timeout.set_from_double(now + cct->_conf->osd_mon_shutdown_timeout);
     while ((ceph_clock_now(cct) < timeout) &&
 	   (state != STOPPING)) {
-      is_stopping_cond.WaitUntil(is_stopping_lock, timeout);
+      is_stopping_cond.WaitUntil(is_stopping_lock, timeout);//dhq:等待monitor确认，有超时
     }
   }
   dout(0) << __func__ << " starting shutdown" << dendl;
@@ -1037,7 +1037,7 @@ bool OSDService::prepare_to_stop()
   return true;
 }
 
-void OSDService::got_stop_ack()
+void OSDService::got_stop_ack()//dhq: MOSDMarkMeDown收到的回复
 {
   Mutex::Locker l(is_stopping_lock);
   if (state == PREPARING_TO_STOP) {
@@ -1246,7 +1246,7 @@ void OSDService::reply_op_error(OpRequestRef op, int err, eversion_t v,
   m->get_connection()->send_message(reply);
 }
 
-void OSDService::handle_misdirected_op(PG *pg, OpRequestRef op)
+void OSDService::handle_misdirected_op(PG *pg, OpRequestRef op)//dhq:从replicated/EC PG的primary来的op，并且是错误的
 {
   MOSDOp *m = static_cast<MOSDOp*>(op->get_req());
   assert(m->get_type() == CEPH_MSG_OSD_OP);

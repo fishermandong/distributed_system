@@ -5052,7 +5052,7 @@ bool PG::op_must_wait_for_map(epoch_t cur_epoch, OpRequestRef& op)
 {
   switch (op->get_req()->get_type()) {
   case CEPH_MSG_OSD_OP:
-    return !have_same_or_newer_map(
+    return !have_same_or_newer_map(//dhq: 我得比对方旧，则需要等待
       cur_epoch,
       static_cast<MOSDOp*>(op->get_req())->get_map_epoch());
 
