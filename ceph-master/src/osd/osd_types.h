@@ -410,7 +410,7 @@ CEPH_HASH_NAMESPACE_START
   };
 CEPH_HASH_NAMESPACE_END
 
-struct spg_t {//dhq: 从get_primary_shard生成spg_t看，这个结构主要是应对erasure code pool的。
+class spg_t {//dhq: 从get_primary_shard生成spg_t看，这个结构主要是应对erasure code pool的。
   pg_t pgid;
   shard_id_t shard;
   spg_t() : shard(shard_id_t::NO_SHARD) {}

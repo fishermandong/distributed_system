@@ -336,7 +336,7 @@ void OSDService::_maybe_split_pgid(OSDMapRef old_map,
   if (pgid.ps() < static_cast<unsigned>(old_map->get_pg_num(pgid.pool()))) {
     set<spg_t> children;
     pgid.is_split(old_map->get_pg_num(pgid.pool()),
-		  new_map->get_pg_num(pgid.pool()), &children);
+		  new_map->get_pg_num(pgid.pool()), &children);//dhq: get_pg_num得到的是pg的总数量，不是pg的id。
     _start_split(pgid, children);
   } else {
     assert(pgid.ps() < static_cast<unsigned>(new_map->get_pg_num(pgid.pool())));
@@ -682,7 +682,7 @@ void OSDService::update_osd_stat(vector<int>& hb_peers)
 
   dout(20) << "update_osd_stat " << osd_stat << dendl;
 }
-
+//dhq: 先给对方share下新的map,再发送消息m
 void OSDService::send_message_osd_cluster(int peer, Message *m, epoch_t from_epoch)
 {
   OSDMapRef next_map = get_nextmap_reserved();
@@ -695,7 +695,7 @@ void OSDService::send_message_osd_cluster(int peer, Message *m, epoch_t from_epo
     release_map(next_map);
     return;
   }
-  const entity_inst_t& peer_inst = next_map->get_cluster_inst(peer);//dhq: peer是对方的id
+  const entity_inst_t& peer_inst = next_map->get_cluster_inst(peer);//dhq: peer是对方的id，从next_map获得，不是用旧的map
   Connection *peer_con = osd->cluster_messenger->get_connection(peer_inst).get();//dhq: get是个引用
   share_map_peer(peer, peer_con, next_map);//dhq:先share map一下
   peer_con->send_message(m);
@@ -729,7 +729,7 @@ pair<ConnectionRef,ConnectionRef> OSDService::get_con_osd_hb(int peer, epoch_t f
       next_map->get_info(peer).up_from > from_epoch) {
     release_map(next_map);
     return ret;
-  }//dhq: back_inst和front_inst啥含义？
+  }//dhq: 跟前面几个函数，都有前几行重复代码，不同的就一小部分
   ret.first = osd->hbclient_messenger->get_connection(next_map->get_hb_back_inst(peer));
   if (next_map->get_hb_front_addr(peer) != entity_addr_t())
     ret.second = osd->hbclient_messenger->get_connection(next_map->get_hb_front_inst(peer));
@@ -763,11 +763,11 @@ epoch_t OSDService::get_peer_epoch(int peer)
 {
   Mutex::Locker l(peer_map_epoch_lock);
   map<int,epoch_t>::iterator p = peer_map_epoch.find(peer);
-  if (p == peer_map_epoch.end())
+  if (p == peer_map_epoch.end())//dhq: NOT found
     return 0;
   return p->second;
 }
-
+//dhq:记录下peer的epoch
 epoch_t OSDService::note_peer_epoch(int peer, epoch_t e)
 {
   Mutex::Locker l(peer_map_epoch_lock);
@@ -782,7 +782,7 @@ epoch_t OSDService::note_peer_epoch(int peer, epoch_t e)
     return p->second;
   } else {
     dout(10) << "note_peer_epoch osd." << peer << " now has " << e << dendl;
-    peer_map_epoch[peer] = e;
+    peer_map_epoch[peer] = e;//dhq:未找到，增加1项
     return e;
   }
 }
@@ -795,7 +795,7 @@ void OSDService::forget_peer_epoch(int peer, epoch_t as_of)
     if (p->second <= as_of) {
       dout(10) << "forget_peer_epoch osd." << peer << " as_of " << as_of
 	       << " had " << p->second << dendl;
-      peer_map_epoch.erase(p);
+      peer_map_epoch.erase(p);//dhq:删除item了
     } else {
       dout(10) << "forget_peer_epoch osd." << peer << " as_of " << as_of
 	       << " has " << p->second << " - not forgetting" << dendl;
@@ -805,7 +805,7 @@ void OSDService::forget_peer_epoch(int peer, epoch_t as_of)
 
 bool OSDService::should_share_map(entity_name_t name, Connection *con,
                                   epoch_t epoch, OSDMapRef& osdmap,
-                                  const epoch_t *sent_epoch_p)
+                                  const epoch_t *sent_epoch_p)//dhq: 应该代表上次sent过的epoch
 {
   bool should_send = false;
   dout(20) << "should_share_map "
@@ -819,7 +819,7 @@ bool OSDService::should_share_map(entity_name_t name, Connection *con,
       dout(20) << "client session last_sent_epoch: "
                << *sent_epoch_p
                << " versus osdmap epoch " << osdmap->get_epoch() << dendl;
-      if (*sent_epoch_p < osdmap->get_epoch()) {
+      if (*sent_epoch_p < osdmap->get_epoch()) {//dhq: 小于osdmap的epoch，再send
         should_send = true;
       } // else we don't need to send it out again
     }
@@ -897,7 +897,7 @@ void OSDService::share_map_peer(int peer, Connection *con, OSDMapRef map)
   if (pe) {
     if (pe < map->get_epoch()) {
       send_incremental_map(pe, con, map);
-      note_peer_epoch(peer, map->get_epoch());
+      note_peer_epoch(peer, map->get_epoch());//dhq: save peer's epoch
     } else
       dout(20) << "share_map_peer " << con << " already has epoch " << pe << dendl;
   } else {
@@ -907,7 +907,7 @@ void OSDService::share_map_peer(int peer, Connection *con, OSDMapRef map)
     // do nothing.
   }
 }
-
+//dhq: can increase "scrubs_pending"
 bool OSDService::can_inc_scrubs_pending()
 {
   bool can_inc = false;
@@ -1049,7 +1049,7 @@ void OSDService::got_stop_ack()//dhq: MOSDMarkMeDown收到的回复
   }
 }
 
-
+//dhq: returns a message with incremental map
 MOSDMap *OSDService::build_incremental_map_msg(epoch_t since, epoch_t to,
                                                OSDSuperblock& sblock)
 {
@@ -1089,9 +1089,9 @@ void OSDService::send_incremental_map(epoch_t since, Connection *con,
            << " to " << con << " " << con->get_peer_addr() << dendl;
 
   MOSDMap *m = NULL;
-  while (!m) {
+  while (!m) {//dhq: a very strange loop
     OSDSuperblock sblock(get_superblock());
-    if (since < sblock.oldest_map) {
+    if (since < sblock.oldest_map) {//dhq: too old, can't do an incremental send
       // just send latest full map
       MOSDMap *m = new MOSDMap(monc->get_fsid());
       m->oldest_map = sblock.oldest_map;
@@ -1104,7 +1104,7 @@ void OSDService::send_incremental_map(epoch_t since, Connection *con,
     if (to > since && (int64_t)(to - since) > cct->_conf->osd_map_share_max_epochs) {
       dout(10) << "  " << (to - since) << " > max " << cct->_conf->osd_map_share_max_epochs
 	       << ", only sending most recent" << dendl;
-      since = to - cct->_conf->osd_map_share_max_epochs;
+      since = to - cct->_conf->osd_map_share_max_epochs;//dhq: modify "since"
     }
     
     if (to - since > (epoch_t)cct->_conf->osd_map_message_max)
@@ -1169,7 +1169,7 @@ void OSDService::clear_map_bl_cache_pins(epoch_t e)
   map_bl_inc_cache.clear_pinned(e);
   map_bl_cache.clear_pinned(e);
 }
-
+//dhq: add to map cache
 OSDMapRef OSDService::_add_map(OSDMap *o)
 {
   epoch_t e = o->get_epoch();
@@ -1202,7 +1202,7 @@ OSDMapRef OSDService::try_get_map(epoch_t epoch)
   if (epoch > 0) {
     dout(20) << "get_map " << epoch << " - loading and decoding " << map << dendl;
     bufferlist bl;
-    if (!_get_map_bl(epoch, bl)) {
+    if (!_get_map_bl(epoch, bl)) {//dhq: get map for the given epoch
       delete map;
       return OSDMapRef();
     }
@@ -1253,7 +1253,7 @@ void OSDService::handle_misdirected_op(PG *pg, OpRequestRef op)//dhq:从replicate
 
   assert(m->get_map_epoch() >= pg->info.history.same_primary_since);
 
-  if (pg->is_ec_pg()) {
+  if (pg->is_ec_pg()) {//dhq: 下面应该是个很好地理解大家持有不同版本map的一个例子，但是还没明白！ 重要！
     /**
        * OSD recomputes op target based on current OSDMap. With an EC pg, we
        * can get this result:
@@ -2624,7 +2624,7 @@ PG* OSD::_make_pg(
   PG *pg;
   if (createmap->get_pg_type(pgid.pgid) == pg_pool_t::TYPE_REPLICATED ||
       createmap->get_pg_type(pgid.pgid) == pg_pool_t::TYPE_ERASURE)
-    pg = new ReplicatedPG(&service, createmap, pool, pgid);
+    pg = new ReplicatedPG(&service, createmap, pool, pgid); //dhq: 两个条件下，都是ReplicatedPG? 
   else 
     assert(0);
 
@@ -2660,7 +2660,7 @@ void OSD::add_newly_split_pg(PG *pg, PG::RecoveryCtx *rctx)
     peering_wait_for_split.erase(to_wake);
   }
   if (!service.get_osdmap()->have_pg_pool(pg->info.pgid.pool()))
-    _remove_pg(pg);
+    _remove_pg(pg);//dhq: 该PG与本osd无关了？
 }
 
 OSD::res_result OSD::_try_resurrect_pg(
@@ -3124,7 +3124,7 @@ void OSD::build_past_intervals_parallel()
  * look up a pg.  if we have it, great.  if not, consider creating it IF the pg mapping
  * hasn't changed since the given epoch and we are the primary.
  */
-void OSD::handle_pg_peering_evt(
+void OSD::handle_pg_peering_evt(//dhq: event?
   spg_t pgid,
   const pg_info_t& info,
   pg_interval_map_t& pi,
