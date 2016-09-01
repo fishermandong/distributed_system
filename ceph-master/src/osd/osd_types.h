@@ -495,7 +495,7 @@ ostream& operator<<(ostream& out, const spg_t &pg);
 
 // ----------------------
 
-class coll_t {
+class coll_t {//dhq: 里面还记录了是哪种pg，meta还是普通的
   enum type_t {
     TYPE_META = 0,
     TYPE_LEGACY_TEMP = 1,  /* no longer used */
@@ -654,7 +654,7 @@ inline ostream& operator<<(ostream& out, const ceph_object_layout &ol)
 
 
 // compound rados version type
-class eversion_t {
+class eversion_t {//dhq: rados的，应该跟操作相关，不仅仅是epoch. eversion，代表epoch和version，打包后类似于 3'7
 public:
   version_t version;
   epoch_t epoch;

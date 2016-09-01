@@ -369,11 +369,11 @@ void OSDService::init_splits_between(spg_t pgid,
 	if (i->is_split(curmap->get_pg_num(i->pool()),
 			nextmap->get_pg_num(i->pool()),
 			&split_pgs)) {
-	  start_split(*i, split_pgs);
+	  start_split(*i, split_pgs);//dhq: 现场启动split
 	  even_newer_pgs.insert(split_pgs.begin(), split_pgs.end());
 	}
       }
-      new_pgs.insert(even_newer_pgs.begin(), even_newer_pgs.end());
+      new_pgs.insert(even_newer_pgs.begin(), even_newer_pgs.end());//dhq: 不断split的集合。把child也加进去，继续看是否有split
       curmap = nextmap;
     }
     assert(curmap == tomap); // we must have had both frommap and tomap
@@ -1631,7 +1631,7 @@ public:
     return r;
   }
 };
-
+//dhq: asok: admin socket ok
 bool OSD::asok_command(string command, cmdmap_t& cmdmap, string format,
 		       ostream& ss)
 {
@@ -2575,7 +2575,7 @@ void OSD::recursive_remove_collection(ObjectStore *store, spg_t pgid, coll_t tmp
 
 // ======================================================
 // PG's
-
+//dhq: PG Pool, not pool
 PGPool OSD::_get_pool(int id, OSDMapRef createmap)
 {
   if (!createmap->have_pg_pool(id)) {
@@ -2642,7 +2642,7 @@ void OSD::add_newly_split_pg(PG *pg, PG::RecoveryCtx *rctx)
   dout(10) << "Adding newly split pg " << *pg << dendl;
   vector<int> up, acting;
   pg->get_osdmap()->pg_to_up_acting_osds(pg->info.pgid.pgid, up, acting);
-  int role = OSDMap::calc_pg_role(service.whoami, acting);
+  int role = OSDMap::calc_pg_role(service.whoami, acting);//dhq: 我是pg里面第几个osd
   pg->set_role(role);
   pg->reg_next_scrub();
   pg->handle_loaded(rctx);
@@ -2660,9 +2660,9 @@ void OSD::add_newly_split_pg(PG *pg, PG::RecoveryCtx *rctx)
     peering_wait_for_split.erase(to_wake);
   }
   if (!service.get_osdmap()->have_pg_pool(pg->info.pgid.pool()))
-    _remove_pg(pg);//dhq: 该PG与本osd无关了？
+    _remove_pg(pg);//dhq: 该PG被split后，彻底没了？
 }
-
+//dhq:重新启用pg
 OSD::res_result OSD::_try_resurrect_pg(
   OSDMapRef curmap, spg_t pgid, spg_t *resurrected, PGRef *old_pg_state)
 {
@@ -2679,7 +2679,7 @@ OSD::res_result OSD::_try_resurrect_pg(
       break;
     cur = cur.get_parent();
   }
-  if (!df)
+  if (!df)//dhq: 只处理正在被删除的pg，而不是早已删除的
     return RES_NONE; // good to go
 
   df->old_pg_state->lock();
@@ -2769,7 +2769,7 @@ PG *OSD::get_pg_or_queue_for_pg(const spg_t& pgid, OpRequestRef& op)
 
   ceph::unordered_map<spg_t, PG*>::iterator i = pg_map.find(pgid);
   if (i == pg_map.end())
-    session->waiting_for_pg[pgid];
+    session->waiting_for_pg[pgid];//dhq: bug? 这句话没含义
 
   map<spg_t, list<OpRequestRef> >::iterator wlistiter =
     session->waiting_for_pg.find(pgid);
@@ -2829,7 +2829,7 @@ void OSD::load_pgs()
   }
 
   vector<coll_t> ls;
-  int r = store->list_collections(ls);
+  int r = store->list_collections(ls);//dhq: collection 应该对应pg，就是个集合
   if (r < 0) {
     derr << "failed to list pgs: " << cpp_strerror(-r) << dendl;
   }
@@ -2847,7 +2847,7 @@ void OSD::load_pgs()
       continue;
     }
 
-    if (it->is_pg(&pgid)) {
+    if (it->is_pg(&pgid)) {//dhq: 这个函数返回pgid
       pgs.insert(pgid);
       continue;
     }
@@ -2911,13 +2911,13 @@ void OSD::load_pgs()
       pg->upgrade(store);
     }
 
-    service.init_splits_between(pg->info.pgid, pg->get_osdmap(), osdmap);
+    service.init_splits_between(pg->info.pgid, pg->get_osdmap(), osdmap);//pg->osdmap可能是旧的，osdmap应该是最新的
 
     // generate state for PG's current mapping
     int primary, up_primary;
     vector<int> acting, up;
     pg->get_osdmap()->pg_to_up_acting_osds(
-      pgid.pgid, &up, &up_primary, &acting, &primary);
+      pgid.pgid, &up, &up_primary, &acting, &primary);//dhq: 怎么还用旧的osdmap? 应该是split完成才切换到新的，上面只是init split，并没完成。疑问：是否可能到此时已经完成了？
     pg->init_primary_up_acting(
       up,
       acting,
@@ -2972,7 +2972,7 @@ struct pistate {
   int primary;
   int up_primary;
 };
-
+//dhq: 主要是计算在哪些epoch之间，本pg的map没有修改
 void OSD::build_past_intervals_parallel()
 {
   map<PG*,pistate> pis;
@@ -2995,7 +2995,7 @@ void OSD::build_past_intervals_parallel()
       }
 
       dout(10) << pg->info.pgid << " needs " << start << "-" << end << dendl;
-      pistate& p = pis[pg];
+      pistate& p = pis[pg];//pis什么时候初始化的 ? http://en.cppreference.com/w/cpp/container/map/operator_at,Returns a reference to the value that is mapped to a key equivalent to key, performing an insertion if such key does not already exist.
       p.start = start;
       p.end = end;
       p.same_interval_since = 0;
@@ -3165,7 +3165,7 @@ void OSD::handle_pg_peering_evt(//dhq: event?
     bool create = false;
     if (primary) {
       // DNE on source?
-      if (info.dne()) {
+      if (info.dne()) {//dhq: Does Not Exist
 	// is there a creation pending on this pg?
 	if (creating_pgs.count(pgid)) {
 	  creating_pgs[pgid].prior.erase(from);
@@ -3180,14 +3180,14 @@ void OSD::handle_pg_peering_evt(//dhq: event?
 	}
       }
       creating_pgs.erase(pgid);
-    } else {
+    } else {//dhq:根据下面注释，如果我不是primary，那么收到peering时，一定有pg结构.估计跟流程设计有关
       assert(!info.dne());  // pg exists if we are hearing about it
     }
 
     // do we need to resurrect a deleting pg?
     spg_t resurrected;
     PGRef old_pg_state;
-    res_result result = _try_resurrect_pg(
+    res_result result = _try_resurrect_pg(//这种事情时如何发生的？既然osdmap里面有该pg,为什么需要resurrect? 
       service.get_osdmap(),
       pgid,
       &resurrected,
@@ -3301,7 +3301,7 @@ void OSD::handle_pg_peering_evt(//dhq: event?
   } else {
     // already had it.  did the mapping change?
     PG *pg = _lookup_lock_pg(pgid);
-    if (epoch < pg->info.history.same_interval_since) {
+    if (epoch < pg->info.history.same_interval_since) {//dhq:从same_interval_since后，该pg相关的map修改过
       dout(10) << *pg << " get_or_create_pg acting changed in "
 	       << pg->info.history.same_interval_since
 	       << " (msg from " << epoch << ")" << dendl;
@@ -3314,7 +3314,7 @@ void OSD::handle_pg_peering_evt(//dhq: event?
   }
 }
 
-
+//dhq: 计算从某个epoch起，各个阶段的pg 成员
 /*
  * calculate prior pg members during an epoch interval [start,end)
  *  - from each epoch, include all osds up then AND now
@@ -3368,7 +3368,7 @@ void OSD::calc_priors_during(
 /**
  * Fill in the passed history so you know same_interval_since, same_up_since,
  * and same_primary_since.
- */
+ */  //dhq: 这些玩意，能否搞成一个矩阵？ 很快查找完成？ 不用循环各个版本比较？
 bool OSD::project_pg_history(spg_t pgid, pg_history_t& h, epoch_t from,
 			     const vector<int>& currentup,
 			     int currentupprimary,

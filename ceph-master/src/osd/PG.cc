@@ -1239,7 +1239,7 @@ void PG::calc_replicated_acting(
  * calculate the desired acting, and request a change with the monitor
  * if it differs from the current acting.
  */
-bool PG::choose_acting(pg_shard_t &auth_log_shard_id)
+bool PG::choose_acting(pg_shard_t &auth_log_shard_id)//dhq: acting set, up set，概念对应
 {
   map<pg_shard_t, pg_info_t> all_info(peer_info.begin(), peer_info.end());
   all_info[pg_whoami] = info;
@@ -6963,7 +6963,7 @@ PG::RecoveryState::GetLog::GetLog(my_context ctx)
   PG *pg = context< RecoveryMachine >().pg;
 
   // adjust acting?
-  if (!pg->choose_acting(auth_log_shard)) {
+  if (!pg->choose_acting(auth_log_shard)) {//dhq: failed
     if (!pg->want_acting.empty()) {
       post_event(NeedActingChange());
     } else {
@@ -6973,7 +6973,7 @@ PG::RecoveryState::GetLog::GetLog(my_context ctx)
   }
 
   // am i the best?
-  if (auth_log_shard == pg->pg_whoami) {
+  if (auth_log_shard == pg->pg_whoami) {//dhq: 我就是权威(具有最新的日志)的那个，直接就认为GetLog完成了
     post_event(GotLog());
     return;
   }

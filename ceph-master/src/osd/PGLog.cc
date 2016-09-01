@@ -180,7 +180,7 @@ void PGLog::trim(
   }
 }
 
-void PGLog::proc_replica_log(
+void PGLog::proc_replica_log(//dhq: peer过程的一部分，确定哪些object我没有，需要去获取和处理
   ObjectStore::Transaction& t,
   pg_info_t &oinfo, const pg_log_t &olog, pg_missing_t& omissing,
   pg_shard_t from) const
