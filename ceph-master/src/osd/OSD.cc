@@ -3335,7 +3335,7 @@ void OSD::calc_priors_during(
     int actual_osds = 0;
     for (unsigned i=0; i<acting.size(); i++) {
       if (acting[i] != CRUSH_ITEM_NONE) {
-	if (osdmap->is_up(acting[i])) {
+	if (osdmap->is_up(acting[i])) {//dhq: 属于acting，并且现在还是up的
 	  if (acting[i] != whoami) {
 	    pset.insert(
 	      pg_shard_t(
@@ -3344,10 +3344,10 @@ void OSD::calc_priors_during(
 	  }
 	  up++;
 	}
-	actual_osds++;
+	actual_osds++;//dhq: 有个计数
       }
     }
-    if (!up && actual_osds) {
+    if (!up && actual_osds) {//dhq: 注意，判断了up为0，并且有acting的，只有全部加。否则估计没法工作了
       // sucky.  add down osds, even tho we can't reach them right now.
       for (unsigned i=0; i<acting.size(); i++) {
 	if (acting[i] != whoami && acting[i] != CRUSH_ITEM_NONE) {
@@ -3365,7 +3365,7 @@ void OSD::calc_priors_during(
 }
 
 
-/**
+/**dhq:  我理解，这个函数就是从当前epoch往小的epoch试探，找到same_interval_since等几个类似的值。
  * Fill in the passed history so you know same_interval_since, same_up_since,
  * and same_primary_since.
  */  //dhq: 这些玩意，能否搞成一个矩阵？ 很快查找完成？ 不用循环各个版本比较？
@@ -3405,7 +3405,7 @@ bool OSD::project_pg_history(spg_t pgid, pg_history_t& h, epoch_t from,
     if ((actingprimary != currentactingprimary ||
 	 upprimary != currentupprimary ||
 	 acting != currentacting ||
-	 up != currentup) && e > h.same_interval_since) {
+	 up != currentup) && e > h.same_interval_since) {//dhq: 有一项不同的，就认为不同。
       dout(15) << "project_pg_history " << pgid << " acting|up changed in " << e 
 	       << " from " << acting << "/" << up
 	       << " " << actingprimary << "/" << upprimary
@@ -3440,7 +3440,7 @@ bool OSD::project_pg_history(spg_t pgid, pg_history_t& h, epoch_t from,
       h.same_primary_since = e;
     }
 
-    if (h.same_interval_since >= e && h.same_up_since >= e && h.same_primary_since >= e)
+    if (h.same_interval_since >= e && h.same_up_since >= e && h.same_primary_since >= e)//这几个都不同了才break.
       break;
   }
 
@@ -3787,7 +3787,7 @@ void OSD::handle_osd_ping(MOSDPing *m)
   m->put();
 }
 
-void OSD::heartbeat_entry()
+void OSD::heartbeat_entry()//dhq: thread的执行主体
 {
   Mutex::Locker l(heartbeat_lock);
   if (is_stopping())
@@ -3806,7 +3806,7 @@ void OSD::heartbeat_entry()
   }
 }
 
-void OSD::heartbeat_check()
+void OSD::heartbeat_check()//dhq: 我理解就是检查各个peer近期有没有hb消息，已持有heartbeat_lock
 {
   assert(heartbeat_lock.is_locked());
   utime_t now = ceph_clock_now(cct);
@@ -3830,13 +3830,13 @@ void OSD::heartbeat_check()
 	     << dendl;
     if (p->second.is_unhealthy(cutoff)) {
       if (p->second.last_rx_back == utime_t() ||
-	  p->second.last_rx_front == utime_t()) {
+	  p->second.last_rx_front == utime_t()) {//dhq：utime_t()是个构造函数，时间全0，是说从没收到过reply?
 	derr << "heartbeat_check: no reply from osd." << p->first
 	     << " ever on either front or back, first ping sent " << p->second.first_tx
 	     << " (cutoff " << cutoff << ")" << dendl;
 	// fail
 	failure_queue[p->first] = p->second.last_tx;
-      } else {
+      } else {//dhq: last_rx_back和last_rx_front都不是0
 	derr << "heartbeat_check: no reply from osd." << p->first
 	     << " since back " << p->second.last_rx_back
 	     << " front " << p->second.last_rx_front
@@ -3877,7 +3877,7 @@ void OSD::heartbeat()
        ++i) {
     int peer = i->first;
     i->second.last_tx = now;
-    if (i->second.first_tx == utime_t())
+    if (i->second.first_tx == utime_t())//dhq: 还是初始化的0
       i->second.first_tx = now;
     dout(30) << "heartbeat sending ping to osd." << peer << dendl;
     i->second.con_back->send_message(new MOSDPing(monc->get_fsid(),
@@ -3910,7 +3910,7 @@ void OSD::heartbeat()
 
   dout(30) << "heartbeat done" << dendl;
 }
-
+//dhq: 针对的是一个connection， HeartbeatDispatcher 里面ms_handle_reset调用
 bool OSD::heartbeat_reset(Connection *con)
 {
   HeartbeatSession *s = static_cast<HeartbeatSession*>(con->get_priv());
@@ -3928,7 +3928,7 @@ bool OSD::heartbeat_reset(Connection *con)
       dout(10) << "heartbeat_reset failed hb con " << con << " for osd." << p->second.peer
 	       << ", reopening" << dendl;
       if (con != p->second.con_back) {
-	p->second.con_back->mark_down();
+	p->second.con_back->mark_down();//dhq: con本身是alive的，另外一个connection被mark_down?
       }
       p->second.con_back.reset(NULL);
       if (p->second.con_front && con != p->second.con_front) {
@@ -3936,7 +3936,7 @@ bool OSD::heartbeat_reset(Connection *con)
       }
       p->second.con_front.reset(NULL);
       pair<ConnectionRef,ConnectionRef> newcon = service.get_con_osd_hb(p->second.peer, p->second.epoch);
-      if (newcon.first) {
+      if (newcon.first) {//dhq: 更换connection
 	p->second.con_back = newcon.first.get();
 	p->second.con_back->set_priv(s->get());
 	if (newcon.second) {
@@ -3960,7 +3960,7 @@ bool OSD::heartbeat_reset(Connection *con)
 
 
 // =========================================
-
+//dhq: 这个函数应很重要，超时的操作都在里面
 void OSD::tick()
 {
   assert(osd_lock.is_locked());
@@ -3980,19 +3980,19 @@ void OSD::tick()
     // mon report?
     utime_t now = ceph_clock_now(cct);
     if (outstanding_pg_stats && timeout_mon_on_pg_stats &&
-	(now - cct->_conf->osd_mon_ack_timeout) > last_pg_stats_ack) {
+	(now - cct->_conf->osd_mon_ack_timeout) > last_pg_stats_ack) {//dhq: monc接收monitor的消息超时
       dout(1) << "mon hasn't acked PGStats in " << now - last_pg_stats_ack
 	      << " seconds, reconnecting elsewhere" << dendl;
-      monc->reopen_session(new C_MonStatsAckTimer(this));
+      monc->reopen_session(new C_MonStatsAckTimer(this));//dhq: monitor die了，只能重新连接，报告也没用 ?
       timeout_mon_on_pg_stats = false;
       last_pg_stats_ack = ceph_clock_now(cct);  // reset clock
       last_pg_stats_sent = utime_t();
     }
     if (now - last_pg_stats_sent > cct->_conf->osd_mon_report_interval_max) {
-      osd_stat_updated = true;
-      do_mon_report();
+      osd_stat_updated = true;//设置这个，给do_mon_report 调用的send_pg_stats 用的
+      do_mon_report();//dhq: 这个是主动报告状态，超过最大间隔，必须强制报告
     } else if (now - last_mon_report > cct->_conf->osd_mon_report_interval_min) {
-      do_mon_report();
+      do_mon_report();//dhq: 没设置为true
     }
 
     map_lock.put_read();
@@ -4023,7 +4023,7 @@ void OSD::tick()
     dispatch_cond.Signal();
   }
 
-  check_ops_in_flight();
+  check_ops_in_flight();//dhq: 检查有没有操作耗时太长
 
   tick_timer.add_event_after(OSD_TICK_INTERVAL, new C_Tick(this));
 }
@@ -4345,7 +4345,7 @@ void OSD::do_mon_report()
 
 void OSD::ms_handle_connect(Connection *con)
 {
-  if (con->get_peer_type() == CEPH_ENTITY_TYPE_MON) {//dhq: from monitor
+  if (con->get_peer_type() == CEPH_ENTITY_TYPE_MON) {//dhq: from monitor，下面的fast_connect，应该对应OSD的连接
     Mutex::Locker l(osd_lock);
     if (is_stopping())
       return;
@@ -5286,7 +5286,7 @@ bool OSD::heartbeat_dispatch(Message *m)
     m->put();
     break;
 
-  case MSG_OSD_PING:
+  case MSG_OSD_PING://dhq: 这个是大分类，handle_osd_ping 里面还要区分 PING_REPLY 等具体消息
     handle_osd_ping(static_cast<MOSDPing*>(m));
     break;
 
@@ -5305,7 +5305,7 @@ bool OSD::heartbeat_dispatch(Message *m)
   return true;
 }
 
-bool OSD::ms_dispatch(Message *m)
+bool OSD::ms_dispatch(Message *m) //OSD继承了 Dispatcher 类，所以有这个函数
 {
   if (m->get_type() == MSG_OSD_MARK_ME_DOWN) {
     service.got_stop_ack();
@@ -5333,7 +5333,7 @@ bool OSD::ms_dispatch(Message *m)
   do_waiters();
 
   dispatch_running = false;
-  dispatch_cond.Signal();
+  dispatch_cond.Signal(); //别的线程可能在等待这个condition.
 
   osd_lock.Unlock();
 
@@ -5350,7 +5350,7 @@ void OSD::dispatch_session_waiting(Session *session, OSDMapRef osdmap)
 
   if (session->waiting_on_map.empty()) {
     clear_session_waiting_on_map(session);
-  } else {
+  } else {//dhq: 上面的dispatch_op_fast 可能没用成功，所以还在上面
     register_session_waiting_on_map(session);
   }
 }
@@ -5376,16 +5376,16 @@ void OSD::update_waiting_for_pg(Session *session, OSDMapRef newmap)
        i != from.end();
        from.erase(i++)) {
     set<spg_t> children;
-    if (!newmap->have_pg_pool(i->first.pool())) {
+    if (!newmap->have_pg_pool(i->first.pool())) {//dhq: 新的map里面，pg仍然存在
       // drop this wait list on the ground
       i->second.clear();
     } else {
-      assert(session->osdmap->have_pg_pool(i->first.pool()));
-      if (i->first.is_split(
+      assert(session->osdmap->have_pg_pool(i->first.pool()));//dhq: 旧的osdmap必须有这个pool
+      if (i->first.is_split(//dhq: 被split了
 	    session->osdmap->get_pg_num(i->first.pool()),
-	    newmap->get_pg_num(i->first.pool()),
+	    newmap->get_pg_num(i->first.pool()),//dhq: pg_num跟pool，什么关系？
 	    &children)) {
-	for (set<spg_t>::iterator child = children.begin();
+	for (set<spg_t>::iterator child = children.begin();//把原来等待在某个pg上的操作，分散挂到被split后产生的各个子pg上。
 	     child != children.end();
 	     ++child) {
 	  unsigned split_bits = child->get_split_bits(
@@ -5433,7 +5433,7 @@ void OSD::session_notify_pg_cleared(
   session->waiting_for_pg.erase(pgid);
   clear_session_waiting_on_pg(session, pgid);
 }
-
+//这个函数就是挂到waiting_on_map上，所以很快
 void OSD::ms_fast_dispatch(Message *m)
 {
   if (service.is_stopping()) {
@@ -5470,7 +5470,7 @@ void OSD::ms_fast_preprocess(Message *m)
       Session *s = static_cast<Session*>(m->get_connection()->get_priv());
       if (s) {
 	s->received_map_lock.Lock();
-	s->received_map_epoch = mm->get_last();
+	s->received_map_epoch = mm->get_last();//dhq: 就设置了一个epoch,没用atomic_t之类的？
 	s->received_map_lock.Unlock();
 	s->put();
       }
@@ -5634,7 +5634,7 @@ epoch_t op_required_epoch(OpRequestRef op)
   }
 }
 
-void OSD::dispatch_op(OpRequestRef op)
+void OSD::dispatch_op(OpRequestRef op) //dhq: OSD::_dispatch()可能创建op，并调用
 {
   switch (op->get_req()->get_type()) {
 
@@ -5672,7 +5672,7 @@ void OSD::dispatch_op(OpRequestRef op)
     break;
   }
 }
-
+//在epoch大于我的epoch时，直接返回false
 bool OSD::dispatch_op_fast(OpRequestRef& op, OSDMapRef& osdmap)
 {
   if (is_stopping()) {
@@ -5681,12 +5681,12 @@ bool OSD::dispatch_op_fast(OpRequestRef& op, OSDMapRef& osdmap)
   }
 
   epoch_t msg_epoch(op_required_epoch(op));
-  if (msg_epoch > osdmap->get_epoch()) {
+  if (msg_epoch > osdmap->get_epoch()) {//dhq: msg里面的epoch比我的大
     Session *s = static_cast<Session*>(op->get_req()->
 				       get_connection()->get_priv());
     if (s) {
       s->received_map_lock.Lock();
-      epoch_t received_epoch = s->received_map_epoch;
+      epoch_t received_epoch = s->received_map_epoch;//dhq: 可能刚刚收到了新的epoch?
       s->received_map_lock.Unlock();
       if (received_epoch < msg_epoch) {
 	osdmap_subscribe(msg_epoch, false);
@@ -5750,7 +5750,7 @@ bool OSD::dispatch_op_fast(OpRequestRef& op, OSDMapRef& osdmap)
   return true;
 }
 
-void OSD::_dispatch(Message *m)
+void OSD::_dispatch(Message *m)//dhq: ms_dispatch 会调用
 {
   assert(osd_lock.is_locked());
   dout(20) << "_dispatch " << m << " " << *m << dendl;
@@ -5997,7 +5997,7 @@ void OSD::sched_scrub()
 void OSD::wait_for_new_map(OpRequestRef op)
 {
   // ask?
-  if (waiting_for_osdmap.empty()) {
+  if (waiting_for_osdmap.empty()) {//第一个等待的，启动subscribe
     osdmap_subscribe(osdmap->get_epoch() + 1, true);
   }
   
@@ -6010,7 +6010,7 @@ void OSD::wait_for_new_map(OpRequestRef op)
 /** update_map
  * assimilate new OSDMap(s).  scan pgs, etc.
  */
-
+//dhq:告诉对方，它被mark down了
 void OSD::note_down_osd(int peer)
 {
   assert(osd_lock.is_locked());
