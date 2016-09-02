@@ -690,7 +690,7 @@ public:
     if (i == get_pools().end()) {
       return false;
     }
-    if (!i->second.ec_pool()) {
+    if (!i->second.ec_pool()) {//dhq: 不是ec_pool，简单生成了
       *out = spg_t(pgid);
       return true;
     }

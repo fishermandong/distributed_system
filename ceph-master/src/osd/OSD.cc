@@ -6064,7 +6064,7 @@ void OSD::osdmap_subscribe(version_t epoch, bool force_request)
 
 void OSD::handle_osd_map(MOSDMap *m)
 {
-  assert(osd_lock.is_locked());
+  assert(osd_lock.is_locked());//dhq:持有了osd_lock
   list<OSDMapRef> pinned_maps;
   if (m->fsid != monc->get_fsid()) {
     dout(0) << "handle_osd_map fsid " << m->fsid << " != " << monc->get_fsid() << dendl;
@@ -6090,7 +6090,7 @@ void OSD::handle_osd_map(MOSDMap *m)
     session->put();
 
   // share with the objecter
-  service.objecter->handle_osd_map(m);
+  service.objecter->handle_osd_map(m);//dhq: 参见objecter变量定义，for teiring reads/writes from/to other OSDs --
 
   epoch_t first = m->get_first();
   epoch_t last = m->get_last();
@@ -6128,7 +6128,7 @@ void OSD::handle_osd_map(MOSDMap *m)
     if (m->oldest_map < first) {
       osdmap_subscribe(m->oldest_map - 1, true);
       m->put();
-      return;
+      return;//dhq: 需要重新subs时，直接return了
     }
     skip_maps = true;
   }
@@ -6502,7 +6502,7 @@ bool OSD::advance_pg(
     max = min_epoch + g_conf->osd_map_max_advance;
   } else {
     max = next_epoch + g_conf->osd_map_max_advance;
-  }
+  }//dhq: 最多advance到哪个epoch?
 
   for (;
        next_epoch <= osd_epoch && next_epoch <= max;
@@ -6513,7 +6513,7 @@ bool OSD::advance_pg(
       // make sure max is bumped up so that we can get past any
       // gap in maps
       max = MAX(max, next_epoch + g_conf->osd_map_max_advance);
-      continue;
+      continue;//dhq: 上一行实际上增加了max，这样处理missing ？
     }
 
     vector<int> newup, newacting;
@@ -6548,9 +6548,9 @@ bool OSD::advance_pg(
     dout(10) << __func__ << " advanced to max " << max
 	     << " past min epoch " << min_epoch
 	     << " ... will requeue " << *pg << dendl;
-    return false;
+    return false;//dhq: 任务未完成，返回false
   }
-  return true;
+  return true;//dhq: 完成
 }
 
 /** 

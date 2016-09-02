@@ -1467,7 +1467,7 @@ int OSDMap::object_locator_to_pg(
     else
       ps = pool->hash_key(oid.name, loc.nspace);
   }
-  pg = pg_t(ps, loc.get_pool(), -1);
+  pg = pg_t(ps, loc.get_pool(), -1);//dhq: placement seedµÄÓÃÍ¾
   return 0;
 }
 

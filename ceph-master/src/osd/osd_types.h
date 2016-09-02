@@ -74,7 +74,7 @@ const char *ceph_osd_op_flag_name(unsigned flag);
 string ceph_osd_flag_string(unsigned flags);
 /// conver CEPH_OSD_OP_FLAG_* op flags to a string
 string ceph_osd_op_flag_string(unsigned flags);
-
+//dhq: shard我理解时在osd端内部的，把一个PG内的多个对象按照seed/余数值分成多个shard，这样在迁移时，按照shard迁移
 struct pg_shard_t {
   int32_t osd;
   shard_id_t shard;
@@ -291,7 +291,7 @@ struct pg_t {
 
   pg_t() : m_pool(0), m_seed(0), m_preferred(-1) {}
   pg_t(ps_t seed, uint64_t pool, int pref=-1) :
-    m_pool(pool), m_seed(seed), m_preferred(pref) {}
+    m_pool(pool), m_seed(seed), m_preferred(pref) {}//dhq: 参见 object_locator_to_pg()，根据seed生成的pg_t结构体
   pg_t(const ceph_pg& cpg) :
     m_pool(cpg.pool), m_seed(cpg.ps), m_preferred((__s16)cpg.preferred) {}
 
@@ -410,7 +410,7 @@ CEPH_HASH_NAMESPACE_START
   };
 CEPH_HASH_NAMESPACE_END
 
-class spg_t {//dhq: 从get_primary_shard生成spg_t看，这个结构主要是应对erasure code pool的。
+class spg_t {//dhq: 从 get_primary_shard 生成spg_t看，这个结构对应了shard，知道我是第几个，而不是笼统的pg概念
   pg_t pgid;
   shard_id_t shard;
   spg_t() : shard(shard_id_t::NO_SHARD) {}
@@ -439,12 +439,12 @@ class spg_t {//dhq: 从get_primary_shard生成spg_t看，这个结构主要是应对erasure co
 		set<spg_t> *pchildren) const {
     set<pg_t> _children;
     set<pg_t> *children = pchildren ? &_children : NULL;
-    bool is_split = pgid.is_split(old_pg_num, new_pg_num, children);
+    bool is_split = pgid.is_split(old_pg_num, new_pg_num, children);//调用pg_t的is_split()，变成几个pg_t
     if (pchildren && is_split) {
       for (set<pg_t>::iterator i = _children.begin();
 	   i != _children.end();
 	   ++i) {
-	pchildren->insert(spg_t(*i, shard));
+	pchildren->insert(spg_t(*i, shard));//变成几个spg_t，且shard是相同的
       }
     }
     return is_split;
@@ -1803,7 +1803,7 @@ inline ostream& operator<<(ostream& out, const pg_history_t& h) {
  *    stamp, OR a newer object, OR have already applied a later delete.
  *  - if last_complete >= log.bottom, then we know pg contents thru log.head.
  *    otherwise, we have no idea what the pg is supposed to contain.
- */
+ */ //dhq: log是在[log.bottom, log.head]区间，而last_complete应该位于这个区间，[log.bottom, last_bottom]之间的应该是可以删除，但还没删的
 struct pg_info_t {
   spg_t pgid;
   eversion_t last_update;    // last object version applied to store.

@@ -453,7 +453,7 @@ pg_t pg_t::get_ancestor(unsigned old_pg_num) const
   ret.m_seed = ceph_stable_mod(m_seed, old_pg_num, old_mask);
   return ret;
 }
-
+//dhq: 注意，这事pg_t的函数，不是pool的函数 ! 考虑的对象就是一个pg_t
 bool pg_t::is_split(unsigned old_pg_num, unsigned new_pg_num, set<pg_t> *children) const
 {
   assert(m_seed < old_pg_num);
@@ -462,19 +462,19 @@ bool pg_t::is_split(unsigned old_pg_num, unsigned new_pg_num, set<pg_t> *childre
 
   bool split = false;
   if (true) {
-    int old_bits = pg_pool_t::calc_bits_of(old_pg_num);
+    int old_bits = pg_pool_t::calc_bits_of(old_pg_num); //dhq: 参见 calc_bits_of的注释
     int old_mask = (1 << old_bits) - 1;
     for (int n = 1; ; n++) {
-      int next_bit = (n << (old_bits-1));
-      unsigned s = next_bit | m_seed;
+      int next_bit = (n << (old_bits-1));//dhq: next_bit的低(old_bits-1)位都是0
+      unsigned s = next_bit | m_seed;//dhq: 看来pg编号不是顺序增加的数字，而是这么计算出来的
 
-      if (s < old_pg_num || s == m_seed)
+      if (s < old_pg_num || s == m_seed) //dhq: < old_pg_num的，直接就跳过，不可能被split出去吗 ? 
 	continue;
-      if (s >= new_pg_num)
+      if (s >= new_pg_num)//dhq: pg总个数就这么多
 	break;
       if ((unsigned)ceph_stable_mod(s, old_pg_num, old_mask) == m_seed) {
 	split = true;
-	if (children)
+	if (children)//dhq: 指针为空时，只需要知道是否split,而不需要结果集合
 	  children->insert(pg_t(s, m_pool, m_preferred));
       }
     }
@@ -957,7 +957,7 @@ void pg_pool_t::convert_to_pg_shards(const vector<int> &from, set<pg_shard_t>* t
     }
   }
 }
-
+//dhq: 如果t==2或者3,那么 b=2，1<<b = 4;
 int pg_pool_t::calc_bits_of(int t)
 {
   int b = 0;
@@ -1104,7 +1104,7 @@ uint32_t pg_pool_t::raw_hash_to_pg(uint32_t v) const
 
 /*
  * map a raw pg (with full precision ps) into an actual pg, for storage
- */
+ *///dhq: raw_pg是个hash值，不一定在pg_num范围内，我们需要做个mod
 pg_t pg_pool_t::raw_pg_to_pg(pg_t pg) const
 {
   pg.set_ps(ceph_stable_mod(pg.ps(), pg_num, pg_num_mask));
