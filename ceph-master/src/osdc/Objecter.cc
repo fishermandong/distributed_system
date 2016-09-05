@@ -2477,7 +2477,7 @@ int Objecter::_calc_target(op_target_t *t, epoch_t *last_force_resend,  bool any
   int size = pi->size;
   int min_size = pi->min_size;
   unsigned pg_num = pi->get_pg_num();
-  int up_primary, acting_primary;
+  int up_primary, acting_primary; //dhq: acting_primary，决定要把请求发送给哪个osd
   vector<int> up, acting;
   osdmap->pg_to_up_acting_osds(pgid, &up, &up_primary,
 			       &acting, &acting_primary);
