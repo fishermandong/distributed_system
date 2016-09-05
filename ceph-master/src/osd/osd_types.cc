@@ -450,10 +450,10 @@ pg_t pg_t::get_ancestor(unsigned old_pg_num) const
   int old_bits = pg_pool_t::calc_bits_of(old_pg_num);
   int old_mask = (1 << old_bits) - 1;
   pg_t ret = *this;
-  ret.m_seed = ceph_stable_mod(m_seed, old_pg_num, old_mask);
+  ret.m_seed = ceph_stable_mod(m_seed, old_pg_num, old_mask); //dhq: parent的m_seed，这样反着可以计算出来
   return ret;
 }
-//dhq: 注意，这事pg_t的函数，不是pool的函数 ! 考虑的对象就是一个pg_t
+//dhq: 注意，这是pg_t的函数，不是pool的函数 ! 考虑的对象就是一个pg_t
 bool pg_t::is_split(unsigned old_pg_num, unsigned new_pg_num, set<pg_t> *children) const
 {
   assert(m_seed < old_pg_num);
@@ -465,17 +465,17 @@ bool pg_t::is_split(unsigned old_pg_num, unsigned new_pg_num, set<pg_t> *childre
     int old_bits = pg_pool_t::calc_bits_of(old_pg_num); //dhq: 参见 calc_bits_of的注释
     int old_mask = (1 << old_bits) - 1;
     for (int n = 1; ; n++) {
-      int next_bit = (n << (old_bits-1));//dhq: next_bit的低(old_bits-1)位都是0
+      int next_bit = (n << (old_bits-1));//dhq: next_bit的低(old_bits-1)位都是0，左移变成了一个比较大的数
       unsigned s = next_bit | m_seed;//dhq: 看来pg编号不是顺序增加的数字，而是这么计算出来的
 
-      if (s < old_pg_num || s == m_seed) //dhq: < old_pg_num的，直接就跳过，不可能被split出去吗 ? 
+      if (s < old_pg_num || s == m_seed) //dhq: < old_pg_num的，直接就跳过，不放到child里面 ?  这是因为根本无需改变它们，也不想改变它们。设计的初衷如此
 	continue;
       if (s >= new_pg_num)//dhq: pg总个数就这么多
-	break;
-      if ((unsigned)ceph_stable_mod(s, old_pg_num, old_mask) == m_seed) {
-	split = true;
+	break;//注意，还是用的old_pg_num和old_mask，不是按照新的来 mod
+      if ((unsigned)ceph_stable_mod(s, old_pg_num, old_mask) == m_seed) {//dhq: 只有余数为m_seed的，才构成一个新的child，啥原因呢 ? 
+	split = true; //★★我觉得应该跟raw_pg_to_pg的含义相同，s对应raw_pg, m_seed则是最终的pg。这样决定的是raw_pg是否需要被split出去 !
 	if (children)//dhq: 指针为空时，只需要知道是否split,而不需要结果集合
-	  children->insert(pg_t(s, m_pool, m_preferred));
+	  children->insert(pg_t(s, m_pool, m_preferred));//dhq: s作为seed了，seed就这么产生的。参见get_ancestor的用法
       }
     }
   }
@@ -1104,7 +1104,7 @@ uint32_t pg_pool_t::raw_hash_to_pg(uint32_t v) const
 
 /*
  * map a raw pg (with full precision ps) into an actual pg, for storage
- *///dhq: raw_pg是个hash值，不一定在pg_num范围内，我们需要做个mod
+ *///dhq: raw_pg是个hash值，不一定在pg_num范围内，我们需要做个mod。设置新的ps(seed)。这里说的是for storage，应该是后端用的
 pg_t pg_pool_t::raw_pg_to_pg(pg_t pg) const
 {
   pg.set_ps(ceph_stable_mod(pg.ps(), pg_num, pg_num_mask));

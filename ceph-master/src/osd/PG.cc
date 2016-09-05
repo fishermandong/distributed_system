@@ -5140,7 +5140,7 @@ void PG::take_waiters()
   peering_queue.splice(peering_queue.begin(), peering_waiters,
 		       peering_waiters.begin(), peering_waiters.end());
 }
-
+//dhq: 参见queue_peering_event的调用场合，我感觉很多时候是本地处理完一件事情后，主动queue的。不一定是来自peering的一条消息触发的。
 void PG::handle_peering_event(CephPeeringEvtRef evt, RecoveryCtx *rctx)
 {
   dout(10) << "handle_peering_event: " << evt->get_desc() << dendl;

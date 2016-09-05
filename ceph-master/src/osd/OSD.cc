@@ -398,7 +398,7 @@ void OSDService::expand_pg_num(OSDMapRef old_map,
        i != pending_splits.end();
     ) {
     if (!new_map->have_pg_pool(i->first.pool())) {
-      rev_pending_splits.erase(i->second);
+      rev_pending_splits.erase(i->second);//dhq: 直接删了，啥意思？实际上不用split?
       pending_splits.erase(i++);
     } else {
       _maybe_split_pgid(old_map, new_map, i->first);
@@ -6010,7 +6010,7 @@ void OSD::wait_for_new_map(OpRequestRef op)
 /** update_map
  * assimilate new OSDMap(s).  scan pgs, etc.
  */
-//dhq:告诉对方，它被mark down了
+//dhq:将相应的连接mark down
 void OSD::note_down_osd(int peer)
 {
   assert(osd_lock.is_locked());
@@ -6125,7 +6125,7 @@ void OSD::handle_osd_map(MOSDMap *m)
     //  1- is good to have
     //  2- is at present the only way to ensure that we get a *full* map as
     //     the first map!
-    if (m->oldest_map < first) {
+    if (m->oldest_map < first) {//这是因为收到的某段旧map我没有，也需要sub一下
       osdmap_subscribe(m->oldest_map - 1, true);
       m->put();
       return;//dhq: 需要重新subs时，直接return了
@@ -6139,7 +6139,7 @@ void OSD::handle_osd_map(MOSDMap *m)
   // store new maps: queue for disk and put in the osdmap cache
   epoch_t last_marked_full = 0;
   epoch_t start = MAX(osdmap->get_epoch() + 1, first);
-  for (epoch_t e = start; e <= last; e++) {
+  for (epoch_t e = start; e <= last; e++) {//dhq:收到的map，写到object store中
     map<epoch_t,bufferlist>::iterator p;
     p = m->maps.find(e);
     if (p != m->maps.end()) {
@@ -6159,11 +6159,11 @@ void OSD::handle_osd_map(MOSDMap *m)
     }
 
     p = m->incremental_maps.find(e);
-    if (p != m->incremental_maps.end()) {
+    if (p != m->incremental_maps.end()) {//可能是incremental 方式发送的map
       dout(10) << "handle_osd_map  got inc map for epoch " << e << dendl;
       bufferlist& bl = p->second;
       ghobject_t oid = get_inc_osdmap_pobject_name(e);
-      t.write(coll_t::meta(), oid, 0, bl.length(), bl);
+      t.write(coll_t::meta(), oid, 0, bl.length(), bl);//写盘
       pin_map_inc_bl(e, bl);
 
       OSDMap *o = new OSDMap;
@@ -6395,7 +6395,7 @@ void OSD::handle_osd_map(MOSDMap *m)
   check_osdmap_features(store);
 
   // yay!
-  consume_map();
+  consume_map();//dhq:前面的事务记录完成了，开始consume
 
   if (is_active() || is_waiting_for_healthy())
     maybe_update_heartbeat_peers();
@@ -6481,7 +6481,7 @@ void OSD::check_osdmap_features(ObjectStore *fs)
     }
   }
 }
-
+//dhq: 目标pg早就存在, epoch变化了，比如osd的up和acting状态变化了。但是也可能发送了分裂。
 bool OSD::advance_pg(
   epoch_t osd_epoch, PG *pg,
   ThreadPool::TPHandle &handle,
@@ -6622,11 +6622,11 @@ void OSD::consume_map()
       else if (pg->is_replica())
         num_pg_replica++;
       else
-        num_pg_stray++;
+        num_pg_stray++;//dhq: 迷失的？
 
       if (!osdmap->have_pg_pool(pg->info.pgid.pool())) {
         //pool is deleted!
-        to_remove.push_back(PGRef(pg));
+        to_remove.push_back(PGRef(pg));//dhq: 什么时候 pool 会被删除？ 那么osd为什么还存在？ 这个到底是什么pool? 
       } else {
         service.init_splits_between(it->first, service.get_osdmap(), osdmap);
       }
@@ -6728,7 +6728,7 @@ void OSD::activate_map()
   // process waiters
   take_waiters(waiting_for_osdmap);
 }
-
+//dhq: 要求对方是mon，这里检查确认下
 bool OSD::require_mon_peer(Message *m)
 {
   if (!m->get_connection()->peer_is_mon()) {
@@ -6740,7 +6740,7 @@ bool OSD::require_mon_peer(Message *m)
   }
   return true;
 }
-
+//dhq: 要求对方是osd，这里检查确认下
 bool OSD::require_osd_peer(Message *m)
 {
   if (!m->get_connection()->peer_is_osd()) {
@@ -6755,7 +6755,7 @@ bool OSD::require_osd_peer(Message *m)
 bool OSD::require_self_aliveness(Message *m, epoch_t epoch)
 {
   epoch_t up_epoch = service.get_up_epoch();
-  if (epoch < up_epoch) {
+  if (epoch < up_epoch) {//dhq: up_epoch要 <= epoch
     dout(7) << "from pre-up epoch " << epoch << " < " << up_epoch << dendl;
     return false;
   }
@@ -6812,7 +6812,7 @@ bool OSD::require_same_or_newer_map(OpRequestRef& op, epoch_t epoch,
   assert(osd_lock.is_locked());
 
   // do they have a newer map?
-  if (epoch > osdmap->get_epoch()) {
+  if (epoch > osdmap->get_epoch()) {//dhq: 我自己的epoch不能更旧
     dout(7) << "waiting for newer map epoch " << epoch
 	    << " > my " << osdmap->get_epoch() << " with " << m << dendl;
     wait_for_new_map(op);
@@ -7145,7 +7145,7 @@ void OSD::dispatch_context(PG::RecoveryCtx &ctx, PG *pg, OSDMapRef curmap,
  * content for, and they are primary for.
  */
 
-void OSD::do_notifies(
+void OSD::do_notifies(//dhq: 给各个pg的master发消息，通知我ok了
   map<int,vector<pair<pg_notify_t,pg_interval_map_t> > >& notify_list,
   OSDMapRef curmap)
 {
@@ -7165,7 +7165,7 @@ void OSD::do_notifies(
 	       << " (NULL con)" << dendl;
       continue;
     }
-    service.share_map_peer(it->first, con.get(), curmap);
+    service.share_map_peer(it->first, con.get(), curmap);//dhq: 先share map
     dout(7) << __func__ << " osd " << it->first
 	    << " on " << it->second.size() << " PGs" << dendl;
     MOSDPGNotify *m = new MOSDPGNotify(curmap->get_epoch(),
@@ -7240,7 +7240,7 @@ void OSD::do_infos(map<int,
 
 
 /** PGNotify
- * from non-primary to primary
+ * from non-primary to primary  //dhq: primary收到消息后的处理
  * includes pg_info_t.
  * NOTE: called with opqueue active.
  */
@@ -7699,8 +7699,8 @@ void OSD::_remove_pg(PG *pg)
     make_pair(
       pg->info.pgid,
       PGRef(pg))
-    );
-  remove_wq.queue(make_pair(PGRef(pg), deleting));
+    );//dhq: 标记待删除，还可以复活的
+  remove_wq.queue(make_pair(PGRef(pg), deleting));//dhq: 估计后面根据这个queue干活
 
   service.pg_remove_epoch(pg->info.pgid);
 
@@ -7983,9 +7983,9 @@ void OSD::handle_op(OpRequestRef& op, OSDMapRef& osdmap)
   }
   share_map.should_send = service.should_share_map(
       m->get_source(), m->get_connection().get(), m->get_map_epoch(),
-      osdmap, &client_session->last_sent_epoch);
+      osdmap, &client_session->last_sent_epoch);//dhq: bug? client_session为空时
   if (client_session) {
-    client_session->sent_epoch_lock.Unlock();
+    client_session->sent_epoch_lock.Unlock();//unlock
     client_session->put();
   }
 
@@ -8039,10 +8039,10 @@ void OSD::handle_op(OpRequestRef& op, OSDMapRef& osdmap)
   int64_t pool = _pgid.pool();
   if ((m->get_flags() & CEPH_OSD_FLAG_PGOP) == 0 &&
       osdmap->have_pg_pool(pool))
-    _pgid = osdmap->raw_pg_to_pg(_pgid);
+    _pgid = osdmap->raw_pg_to_pg(_pgid); //dhq: raw变成实际的pgid
 
-  spg_t pgid;
-  if (!osdmap->get_primary_shard(_pgid, &pgid)) {
+  spg_t pgid;//这个时spg_t结构，要注意了
+  if (!osdmap->get_primary_shard(_pgid, &pgid)) {//dhq: 获取shard
     // missing pool or acting set empty -- drop
     return;
   }
@@ -8091,8 +8091,8 @@ void OSD::handle_op(OpRequestRef& op, OSDMapRef& osdmap)
   if (pg) {
     op->send_map_update = share_map.should_send;
     op->sent_epoch = m->get_map_epoch();
-    enqueue_op(pg, op);
-    share_map.should_send = false;
+    enqueue_op(pg, op); //dhq: Queue到osd->op_wq，定义为: ShardedThreadPool::ShardedWQ < pair <PGRef, PGQueueable> > &op_wq;
+    share_map.should_send = false; //参见ShardedOpWQ::_enqueue
   }
 }
 

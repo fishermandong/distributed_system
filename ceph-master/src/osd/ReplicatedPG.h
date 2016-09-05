@@ -1448,7 +1448,7 @@ public:
     ObjectStore::Transaction *t) {
     coll_t target = coll_t(child);
     PG::_create(*t, child);
-    t->split_collection(
+    t->split_collection(//dhq:这个函数是object_store的操作了应该
       coll,
       split_bits,
       seed,
