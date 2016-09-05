@@ -8092,7 +8092,7 @@ void OSD::handle_op(OpRequestRef& op, OSDMapRef& osdmap)
     op->send_map_update = share_map.should_send;
     op->sent_epoch = m->get_map_epoch();
     enqueue_op(pg, op); //dhq: Queue到osd->op_wq，定义为: ShardedThreadPool::ShardedWQ < pair <PGRef, PGQueueable> > &op_wq;
-    share_map.should_send = false; //参见ShardedOpWQ::_enqueue
+    share_map.should_send = false; //参见 ShardedOpWQ::_enqueue
   }
 }
 
