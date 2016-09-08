@@ -90,7 +90,7 @@ public:
   virtual bool filter(bufferlist& xattr_data, bufferlist& outdata);
 };
 
-class ReplicatedPG : public PG, public PGBackend::Listener {
+class ReplicatedPG : public PG, public PGBackend::Listener {//是PG的子类，listener的子类
   friend class OSD;
   friend class Watch;
 

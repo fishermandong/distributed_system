@@ -882,7 +882,7 @@ inline ostream& operator<<(ostream& out, const pool_snap_info_t& si) {
 /*
  * pg_pool
  */
-struct pg_pool_t {
+struct pg_pool_t {//dhq: 参见prepare_pool_crush_ruleset，这个应就对应一个pool
   enum {
     TYPE_REPLICATED = 1,     // replication
     //TYPE_RAID4 = 2,   // raid4 (never implemented)

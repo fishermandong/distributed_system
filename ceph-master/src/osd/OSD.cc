@@ -8041,7 +8041,7 @@ void OSD::handle_op(OpRequestRef& op, OSDMapRef& osdmap)
       osdmap->have_pg_pool(pool))
     _pgid = osdmap->raw_pg_to_pg(_pgid); //dhq: raw变成实际的pgid
 
-  spg_t pgid;//这个时spg_t结构，要注意了
+  spg_t pgid;//这个是spg_t结构，要注意了
   if (!osdmap->get_primary_shard(_pgid, &pgid)) {//dhq: 获取shard
     // missing pool or acting set empty -- drop
     return;
@@ -8105,7 +8105,7 @@ void OSD::handle_replica_op(OpRequestRef& op, OSDMapRef& osdmap)
   dout(10) << __func__ << " " << *m << " epoch " << m->map_epoch << dendl;
   if (!require_self_aliveness(op->get_req(), m->map_epoch))
     return;
-  if (!require_osd_peer(op->get_req()))
+  if (!require_osd_peer(op->get_req()))//peer是个osd
     return;
   if (osdmap->get_epoch() >= m->map_epoch &&
       !require_same_peer_instance(op->get_req(), osdmap, true))

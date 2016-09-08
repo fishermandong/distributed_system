@@ -268,7 +268,7 @@ std::string PG::gen_prefix() const
 
 void PG::proc_master_log(
   ObjectStore::Transaction& t, pg_info_t &oinfo,
-  pg_log_t &olog, pg_missing_t& omissing, pg_shard_t from)
+  pg_log_t &olog, pg_missing_t& omissing, pg_shard_t from)//dhq: 关于missing， paper也有论述
 {
   dout(10) << "proc_master_log for osd." << from << ": "
 	   << olog << " " << omissing << dendl;

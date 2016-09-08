@@ -317,7 +317,7 @@ void ReplicatedPG::on_peer_recover(
   info.stats.stats.sum.add(stat);
   publish_stats_to_osd();
   // done!
-  peer_missing[peer].got(soid, recovery_info.version);
+  peer_missing[peer].got(soid, recovery_info.version); //dhq: peer上missing的搞定了？
 }
 
 void ReplicatedPG::begin_peer_recover(
@@ -3345,7 +3345,7 @@ bool ReplicatedPG::maybe_create_new_object(OpContext *ctx)
   return false;
 }
 
-int ReplicatedPG::do_osd_ops(OpContext *ctx, vector<OSDOp>& ops)
+int ReplicatedPG::do_osd_ops(OpContext *ctx, vector<OSDOp>& ops)//dhq: 读写处理执行函数，比如 CEPH_OSD_OP_WRITEFULL
 {
   int result = 0;
   SnapSetContext *ssc = ctx->obc->ssc;
