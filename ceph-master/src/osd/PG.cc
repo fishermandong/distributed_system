@@ -790,7 +790,7 @@ void PG::remove_down_peer_info(const OSDMapRef osdmap)
   while (p != peer_info.end()) {
     if (!osdmap->is_up(p->first.osd)) {
       dout(10) << " dropping down osd." << p->first << " info " << p->second << dendl;
-      peer_missing.erase(p->first);
+      peer_missing.erase(p->first); //dhq: remove from every list
       peer_log_requested.erase(p->first);
       peer_missing_requested.erase(p->first);
       peer_info.erase(p++);
@@ -860,7 +860,7 @@ void PG::build_prior(std::auto_ptr<PriorSet> &prior_set)
   if (prior.pg_down) {
     state_set(PG_STATE_DOWN);
   }
-
+//dhq: up_thru, the last time the osd was known to be up(alive). http://docs.ceph.com/docs/master/dev/peering/
   if (get_osdmap()->get_up_thru(osd->whoami) < info.history.same_interval_since) {
     dout(10) << "up_thru " << get_osdmap()->get_up_thru(osd->whoami)
 	     << " < same_since " << info.history.same_interval_since
@@ -6977,13 +6977,13 @@ PG::RecoveryState::GetLog::GetLog(my_context ctx)
     post_event(GotLog());
     return;
   }
-
+  //dhq: I am not the auth log shard
   const pg_info_t& best = pg->peer_info[auth_log_shard];
 
   // am i broken?
   if (pg->info.last_update < best.log_tail) {
     dout(10) << " not contiguous with osd." << auth_log_shard << ", down" << dendl;
-    post_event(IsIncomplete());
+    post_event(IsIncomplete());//dhq: make last_update itself correct before requesting log from peer.
     return;
   }
 
@@ -7001,7 +7001,7 @@ PG::RecoveryState::GetLog::GetLog(my_context ctx)
 
   // how much?
   dout(10) << " requesting log from osd." << auth_log_shard << dendl;
-  context<RecoveryMachine>().send_query(
+  context<RecoveryMachine>().send_query(//dhq: send to auth_log_shard requesting log. I am not auth
     auth_log_shard,
     pg_query_t(
       pg_query_t::LOG,
@@ -7188,7 +7188,7 @@ boost::statechart::result PG::RecoveryState::Incomplete::react(const MNotifyRec&
   }
 }
 
-void PG::RecoveryState::Incomplete::exit()
+void PG::RecoveryState::Incomplete::exit()//dhq: exit, react, entry, etc.. make up a state machine?
 {
   context< RecoveryMachine >().log_exit(state_name, enter_time);
   PG *pg = context< RecoveryMachine >().pg;
@@ -7244,7 +7244,7 @@ PG::RecoveryState::GetMissing::GetMissing(my_context ctx)
     // get enough log to detect divergent updates.
     eversion_t since(pi.last_epoch_started, 0);
     assert(pi.last_update >= pg->info.log_tail);  // or else choose_acting() did a bad thing
-    if (pi.log_tail <= since) {
+    if (pi.log_tail <= since) {//dhq: we have all logs >=logtail, it's ok to request log starting from "since"
       dout(10) << " requesting log+missing since " << since << " from osd." << *i << dendl;
       context< RecoveryMachine >().send_query(
 	*i,
@@ -7263,11 +7263,11 @@ PG::RecoveryState::GetMissing::GetMissing(my_context ctx)
 	  i->shard, pg->pg_whoami.shard,
 	  pg->info.history, pg->get_osdmap()->get_epoch()));
     }
-    peer_missing_requested.insert(*i);
+    peer_missing_requested.insert(*i);//dhq: mark this peer as requested
     pg->blocked_by.insert(i->osd);
   }
 
-  if (peer_missing_requested.empty()) {
+  if (peer_missing_requested.empty()) {//dhq: no osd requires log, they are all up2date!
     if (pg->need_up_thru) {
       dout(10) << " still need up_thru update before going active" << dendl;
       post_event(NeedUpThru());
@@ -7285,12 +7285,12 @@ boost::statechart::result PG::RecoveryState::GetMissing::react(const MLogRec& lo
 {
   PG *pg = context< RecoveryMachine >().pg;
 
-  peer_missing_requested.erase(logevt.from);
+  peer_missing_requested.erase(logevt.from);//dhq: remove from list
   pg->proc_replica_log(*context<RecoveryMachine>().get_cur_transaction(),
 		       logevt.msg->info, logevt.msg->log, logevt.msg->missing, logevt.from);
   
-  if (peer_missing_requested.empty()) {
-    if (pg->need_up_thru) {
+  if (peer_missing_requested.empty()) {//dhq: the last one has been removed.
+    if (pg->need_up_thru) {//dhq: the next step.
       dout(10) << " still need up_thru update before going active" << dendl;
       post_event(NeedUpThru());
     } else {
@@ -7303,7 +7303,7 @@ boost::statechart::result PG::RecoveryState::GetMissing::react(const MLogRec& lo
 }
 
 boost::statechart::result PG::RecoveryState::GetMissing::react(const QueryState& q)
-{
+{//dhq: this is only a query
   PG *pg = context< RecoveryMachine >().pg;
   q.f->open_object_section("state");
   q.f->dump_string("name", state_name);
@@ -7416,7 +7416,7 @@ PG::PriorSet::PriorSet(bool ec_pool,
 		       const pg_info_t &info,
 		       const PG *debug_pg)
   : ec_pool(ec_pool), pg_down(false), pcontdec(c)
-{
+{//dhq: refer to  http://docs.ceph.com/docs/master/dev/peering/, section [up_thru]
   /*
    * We have to be careful to gracefully deal with situations like
    * so. Say we have a power outage or something that takes out both
@@ -7427,7 +7427,7 @@ PG::PriorSet::PriorSet(bool ec_pool,
    *  2:   B
    *  3:       let's say B dies for good, too (say, from the power spike) 
    *  4: A
-   *
+   * //dhq:我们可能以为B在die前已经apply了所有的log，但是实际上它没有。
    * which makes it look like B may have applied updates to the PG
    * that we need in order to proceed.  This sucks...
    *
@@ -7454,7 +7454,7 @@ PG::PriorSet::PriorSet(bool ec_pool,
    *
    * -> we must wait for B, bc it was alive through 2, and could have
    *    written to the pg.
-   *
+   * //dhq: 因为B可能完成同步，并当了一会primary。必须等待它，才能获得最新的log
    * If B is really dead, then an administrator will need to manually
    * intervene by marking the OSD as "lost."
    */

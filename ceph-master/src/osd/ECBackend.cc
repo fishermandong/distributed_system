@@ -301,7 +301,7 @@ void ECBackend::handle_recovery_push(
 	op.soid, ghobject_t::NO_GEN, get_parent()->whoami_shard().shard));
   }
   if (op.after_progress.data_complete) {
-    if ((get_parent()->pgb_is_primary())) {
+    if ((get_parent()->pgb_is_primary())) {//dhq: is primary
       assert(recovery_ops.count(op.soid));
       assert(recovery_ops[op.soid].obc);
       object_stat_sum_t stats;

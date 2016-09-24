@@ -112,13 +112,13 @@ void ReplicatedPG::OpContext::start_async_reads(ReplicatedPG *pg)
     obc->obs.oi.soid,
     pending_async_reads,
     new OnReadComplete(pg, this));
-  pending_async_reads.clear();
+  pending_async_reads.clear();//dhq: submission done, clear it
 }
 void ReplicatedPG::OpContext::finish_read(ReplicatedPG *pg)
 {
   assert(inflightreads > 0);
   --inflightreads;
-  if (async_reads_complete()) {
+  if (async_reads_complete()) {//dhq: no inflight reads
     assert(pg->in_progress_async_reads.size());
     assert(pg->in_progress_async_reads.front().second == this);
     pg->in_progress_async_reads.pop_front();
@@ -228,7 +228,7 @@ void ReplicatedPG::on_local_recover(
   if (is_primary()) {
     info.stats.stats.sum.add(stat_diff);
 
-    assert(obc);
+    assert(obc);//dhq: object context
     obc->obs.exists = true;
     obc->ondisk_write_lock();
 
@@ -236,7 +236,7 @@ void ReplicatedPG::on_local_recover(
     assert(got);
 
     assert(recovering.count(obc->obs.oi.soid));
-    recovering[obc->obs.oi.soid] = obc;
+    recovering[obc->obs.oi.soid] = obc;//dhq: obs: object state
     obc->obs.oi = recovery_info.oi;  // may have been updated above
 
 
@@ -317,14 +317,14 @@ void ReplicatedPG::on_peer_recover(
   info.stats.stats.sum.add(stat);
   publish_stats_to_osd();
   // done!
-  peer_missing[peer].got(soid, recovery_info.version); //dhq: peer上missing的搞定了？
+  peer_missing[peer].got(soid, recovery_info.version); //dhq: got it, the object will be removed from peer_missing.
 }
 
 void ReplicatedPG::begin_peer_recover(
   pg_shard_t peer,
   const hobject_t soid)
 {
-  peer_missing[peer].revise_have(soid, eversion_t());
+  peer_missing[peer].revise_have(soid, eversion_t());//dhq: have this new eversion for hobj soid
 }
 
 void ReplicatedPG::schedule_recovery_work(
@@ -368,7 +368,7 @@ PerfCounters *ReplicatedPG::get_logger()
 
 bool ReplicatedPG::is_missing_object(const hobject_t& soid) const
 {
-  return pg_log.get_missing().missing.count(soid);
+  return pg_log.get_missing().missing.count(soid);//dhq: 确认某个object是否为missing的。
 }
 
 void ReplicatedPG::wait_for_unreadable_object(
